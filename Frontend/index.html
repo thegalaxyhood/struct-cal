@@ -1,79 +1,93 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Slab Design Input Verifier</title>
+  <title>Moment Distribution Calculator</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    input { margin-bottom: 10px; display: block; width: 200px; }
-    button { margin-top: 10px; padding: 6px 12px; }
-    #result { margin-top: 20px; font-weight: bold; }
+    body { font-family: Arial; padding: 20px; }
+    button { padding: 10px 20px; }
+    pre { background: #f9f9f9; padding: 15px; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
 
-  <h2>Slab Design Input Verification</h2>
+  <h2>Moment Distribution - Structural Analysis</h2>
+  <button onclick="momentDistribution()">Run Moment Distribution</button>
 
-  <label>Characteristic strength of concrete (Fcu) [N/mm²]:</label>
-  <input type="number" id="Fcu" value="25">
-
-  <label>Characteristic strength of steel (Fy) [N/mm²]:</label>
-  <input type="number" id="Fy" value="410">
-
-  <label>Thickness of slab [mm]:</label>
-  <input type="number" id="thickness_slab" value="150">
-
-  <label>Concrete cover [mm]:</label>
-  <input type="number" id="concrete_cover" value="20">
-
-  <label>Diameter of rebar [mm]:</label>
-  <input type="number" id="diameter_rebar" value="12">
-
-  <label>Ultimate load [kN/m²]:</label>
-  <input type="number" id="ultimate_load" value="13.32">
-
-  <label>Length of longer side Ly [m]:</label>
-  <input type="number" id="Ly" value="3.5">
-
-  <label>Length of shorter side Lx [m]:</label>
-  <input type="number" id="Lx" value="3.5">
-
-  <button onclick="verifyInputs()">Verify Inputs & Calculate</button>
-
-  <div id="result"></div>
+  <pre id="output"></pre>
 
   <script>
-    function verifyInputs() {
-      const Fcu = parseFloat(document.getElementById("Fcu").value);
-      const Fy = parseFloat(document.getElementById("Fy").value);
-      const thickness_slab = parseFloat(document.getElementById("thickness_slab").value);
-      const concrete_cover = parseFloat(document.getElementById("concrete_cover").value);
-      const diameter_rebar = parseFloat(document.getElementById("diameter_rebar").value);
-      const ultimate_load = parseFloat(document.getElementById("ultimate_load").value);
-      const Ly = parseFloat(document.getElementById("Ly").value);
-      const Lx = parseFloat(document.getElementById("Lx").value);
+    function momentDistribution() {
+      const L = [3, 4, 3];  // Span lengths: L1, L2, L3
+      const w = [10, 10, 10];  // Uniform loads on each span
+      const m = 1; // Constant for G (not used in this version but kept for future)
 
-      const effective_depth = thickness_slab - concrete_cover - diameter_rebar / 2;
+      // Calculate K values
+      const epk1 = (3 / 4) * (1 / L[0]);
+      const epk3 = (3 / 4) * (1 / L[2]);
+      const msk2 = 1 / L[1];
+      const msk3 = 1 / L[2];
 
-      const summary = `
-        Characteristic strength of concrete (Fcu): ${Fcu} N/mm²\n
-        Characteristic strength of steel (Fy): ${Fy} N/mm²\n
-        Thickness of slab: ${thickness_slab} mm\n
-        Concrete cover: ${concrete_cover} mm\n
-        Effective depth of slab: ${effective_depth} mm\n
-        Ultimate load: ${ultimate_load} kN/m²\n
-        Length of longer side (Ly): ${Ly} m\n
-        Length of shorter side (Lx): ${Lx} m\n
-      `;
+      // Calculate D.f values
+      const df1 = epk1 / (msk2 - epk1);
+      const df2 = 1 - df1;
+      const df3 = msk2 / (msk3 - msk2);
+      const df4 = 1 - df3;
+      const df5 = msk3 / (epk3 - msk3);
+      const df6 = 1 - df5;
 
-      const confirmed = confirm("Please review the input values:\n\n" + summary + "\nAre all the inputs correct?");
-      const resultDiv = document.getElementById("result");
+      const dfs = [df1, df2, df3, df4, df5, df6].map(x => Math.abs(x));
 
-      if (confirmed) {
-        const Ly_Lx_ratio = Ly / Lx;
-        resultDiv.textContent = `The ratio of Ly/Lx is: ${Ly_Lx_ratio.toFixed(3)}`;
-      } else {
-        resultDiv.textContent = "Please recheck your input values and try again.";
-      }
+      // Calculate FEMs
+      const epf1 = (w[0] * Math.pow(L[0], 2)) / 8;
+      const epf3 = (w[2] * Math.pow(L[2], 2)) / 8;
+      const msf2 = (w[1] * Math.pow(L[1], 2)) / 12;
+      const msf3 = (w[2] * Math.pow(L[2], 2)) / 12;
+
+      // Balance moments
+      const bl1 = epf1 - msf2;
+      const bl2 = msf2 - msf3;
+      const bl3 = msf3 - epf3;
+
+      // Carryover moments
+      let co1 = bl1 * df1;
+      let co2 = bl1 * df2;
+      let co3 = bl2 * df3;
+      let co4 = bl2 * df4;
+      let co5 = bl3 * df5;
+      let co6 = bl3 * df6;
+
+      // Swap and halve carryovers (per pseudo code)
+      const swap23 = [co2 * 0.5, co3 * 0.5];  // co2 <-> co3
+      const swap45 = [co4 * 0.5, co5 * 0.5];  // co4 <-> co5
+
+      // Final matrix simulation (FEM + carryovers)
+      const femRow = [epf1, msf2, msf3, epf3];
+      const coRow1 = [0, 0, 0, 0]; // co1, not included per spec
+      const coRow2 = [0, swap23[1], swap23[0], 0];
+      const coRow3 = [0, swap45[1], swap45[0], 0];
+      const coRow4 = [0, 0, 0, 0]; // co6, not included per spec
+
+      // Sum columns
+      const finalMoments = femRow.map((val, i) =>
+        val + coRow1[i] + coRow2[i] + coRow3[i] + coRow4[i]
+      );
+
+      // Output to console and page
+      const output = document.getElementById("output");
+      const log = (...args) => output.textContent += args.join(" ") + "\n";
+
+      output.textContent = ""; // Clear previous
+
+      log("Span Lengths (L):", L);
+      log("Loads (w):", w);
+      log("K Values: epk1 =", epk1.toFixed(3), "epk3 =", epk3.toFixed(3), "msk2 =", msk2.toFixed(3), "msk3 =", msk3.toFixed(3));
+      log("\nDistribution Factors (abs):", dfs.map(x => x.toFixed(3)).join(", "));
+      log("\nFEMs:", femRow.map(x => x.toFixed(2)).join(", "));
+      log("Balance Moments:", [bl1, bl2, bl3].map(x => x.toFixed(2)).join(", "));
+      log("Carryover Moments (Swapped + 0.5x):");
+      log("CO2 ->", swap23[1].toFixed(2), "  CO3 ->", swap23[0].toFixed(2));
+      log("CO4 ->", swap45[1].toFixed(2), "  CO5 ->", swap45[0].toFixed(2));
+      log("\nFinal Moments:", finalMoments.map(x => x.toFixed(2)).join(", "));
     }
   </script>
 
