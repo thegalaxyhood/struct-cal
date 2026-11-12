@@ -1,138 +1,1393 @@
-<!DOCTYPE html><html>
+
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <title>Moment Distribution Calculator</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Continuous Beam - Moment Distribution</title>
+
   <style>
-    body { font-family: Arial; padding: 20px; }
-    input { margin: 4px 4px 10px 0; width: 80px; }
-    button { margin-top: 10px; padding: 8px 16px; }
-    pre, canvas { margin-top: 20px; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 25px;
+      background: #f4f6f8;
+      color: #222;
+    }
+
+    h1, h2, h3 {
+      color: #17365d;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: auto;
+    }
+
+    .panel {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    input {
+      padding: 8px;
+      width: 110px;
+      margin-top: 5px;
+    }
+
+    button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 5px;
+      background: #17365d;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #24558d;
+    }
+
+    .span-input {
+      display: inline-block;
+      vertical-align: top;
+      background: #f1f4f8;
+      padding: 12px;
+      margin: 8px;
+      border-radius: 6px;
+    }
+
+    pre {
+      background: #101820;
+      color: #d8f3dc;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    canvas {
+      width: 100%;
+      height: 300px;
+      background: white;
+      border: 1px solid #ccc;
+      margin-top: 10px;
+    }
+
+    .note {
+      color: #555;
+      font-size: 14px;
+    }
   </style>
 </head>
-<body>  <h2>Dynamic Moment Distribution Calculator</h2><label>Number of spans: <input type="number" id="spanCount" value="3" min="2" max="10"> </label> <button onclick="generateInputs()">Generate Inputs</button>
 
-  <div id="inputArea"></div>
-  <button onclick="momentDistribution()">Calculate Moments</button>  <pre id="output"></pre><canvas id="momentCanvas" width="800" height="400"></canvas>
+<body>
+<div class="container">
 
-  <script>
-    function generateInputs() {
-      const spanCount = parseInt(document.getElementById("spanCount").value);
-      const inputArea = document.getElementById("inputArea");
-      inputArea.innerHTML = "<h3>Span Inputs</h3>";
+  <h1>Continuous Beam Analysis</h1>
+  
 
-      for (let i = 0; i < spanCount; i++) {
-        inputArea.innerHTML += `
-          <label>Length L${i + 1} (m):
-            <input type="number" id="L${i}" value="3" step="0.1">
-          </label>
-          <label>Load w${i + 1} (kN/m):
-            <input type="number" id="w${i}" value="10" step="0.1">
-          </label><br>
-        `;
-      }
+  <div class="panel">
+    <h2>1. Beam Configuration</h2>
+
+    <div class="controls">
+      <label>
+        Number of spans:
+        <input
+          type="number"
+          id="spanCount"
+          value="5"
+          min="1"
+          max="50"
+        >
+      </label>
+
+      <button onclick="generateInputs()">
+        Generate Span Inputs
+      </button>
+    </div>
+
+    <p class="note">
+      Both extreme supports are assumed hinged.
+      Internal supports are continuous.
+    </p>
+
+    <div id="inputArea"></div>
+  </div>
+
+  <div class="panel">
+    <h2>2. Calculation Settings</h2>
+
+    <div class="controls">
+      <label>
+        Tolerance:
+        <input
+          type="number"
+          id="tolerance"
+          value="0.0001"
+          step="0.0001"
+          min="0.000000001"
+        >
+      </label>
+
+      <label>
+        Maximum iterations:
+        <input
+          type="number"
+          id="maxIterations"
+          value="1000"
+          min="1"
+        >
+      </label>
+
+      <button onclick="momentDistribution()">
+        Calculate Beam
+      </button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>3. Calculation Results</h2>
+    <pre id="output">Enter your beam data and click Calculate Beam.</pre>
+  </div>
+
+  <div class="panel">
+    <h2>4. Shear Force Diagram</h2>
+    <canvas id="shearCanvas" width="1000" height="350"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>5. Bending Moment Diagram</h2>
+    <canvas id="momentCanvas" width="1000" height="350"></canvas>
+  </div>
+
+</div>
+
+<script>
+
+// ======================================================
+// PHASE 1: GENERATE DYNAMIC INPUTS
+// ======================================================
+
+function generateInputs() {
+
+  const spanCount = Number(
+    document.getElementById("spanCount").value
+  );
+
+  const inputArea = document.getElementById("inputArea");
+
+  if (
+    !Number.isInteger(spanCount) ||
+    spanCount < 1 ||
+    spanCount > 50
+  ) {
+    alert("Enter a whole number of spans between 1 and 50.");
+    return;
+  }
+
+  inputArea.innerHTML = "<h3>Span Inputs</h3>";
+
+  for (let i = 0; i < spanCount; i++) {
+
+    inputArea.innerHTML += `
+      <div class="span-input">
+
+        <strong>Span ${i + 1}</strong>
+
+        <label>
+          Length L${i + 1} (m):
+          <input
+            type="number"
+            id="L${i}"
+            value="3"
+            min="0.001"
+            step="0.1"
+          >
+        </label>
+
+        <label>
+          UDL w${i + 1} (kN/m):
+          <input
+            type="number"
+            id="w${i}"
+            value="10"
+            min="0"
+            step="0.1"
+          >
+        </label>
+
+      </div>
+    `;
+  }
+}
+
+
+// ======================================================
+// PHASE 2: READ AND VALIDATE INPUTS
+// ======================================================
+
+function readInputs() {
+
+  const spanCount = Number(
+    document.getElementById("spanCount").value
+  );
+
+  if (
+    !Number.isInteger(spanCount) ||
+    spanCount < 1 ||
+    spanCount > 50
+  ) {
+    throw new Error("Invalid number of spans.");
+  }
+
+  const L = [];
+  const w = [];
+
+  for (let i = 0; i < spanCount; i++) {
+
+    const length = Number(
+      document.getElementById(`L${i}`).value
+    );
+
+    const load = Number(
+      document.getElementById(`w${i}`).value
+    );
+
+    if (!Number.isFinite(length) || length <= 0) {
+      throw new Error(`Span ${i + 1} must have a positive length.`);
     }
 
-    function momentDistribution() {
-      const spanCount = parseInt(document.getElementById("spanCount").value);
-      const L = [], w = [];
+    if (!Number.isFinite(load) || load < 0) {
+      throw new Error(`Span ${i + 1} must have a non-negative UDL.`);
+    }
 
-      for (let i = 0; i < spanCount; i++) {
-        L.push(parseFloat(document.getElementById(`L${i}`).value));
-        w.push(parseFloat(document.getElementById(`w${i}`).value));
-      }
+    L.push(length);
+    w.push(load);
+  }
 
-      const output = document.getElementById("output");
-      output.textContent = "";
-      const log = (...args) => output.textContent += args.join(" ") + "\n";
+  return { L, w, spanCount };
+}
 
-      const femRow = [], balanceMoments = [], dfs = [], swapRows = [];
-      let coResults = [];
 
-      // K values and DFs
-      for (let i = 0; i < spanCount; i++) {
-        if (i === 0 || i === spanCount - 1) continue;
-        const kLeft = i === 1 ? (3 / 4) * (1 / L[i - 1]) : 1 / L[i - 1];
-        const kMid = 1 / L[i];
-        const kRight = i === spanCount - 2 ? (3 / 4) * (1 / L[i + 1]) : 1 / L[i + 1];
+// ======================================================
+// PHASE 3: FIXED-END MOMENTS (FEM)
+// ======================================================
 
-        const dfL = Math.abs(kLeft / (kMid - kLeft));
-        const dfR = Math.abs(kMid / (kRight - kMid));
+// Matrix structure:
+// [leftEnd, rightEnd]
+//
+// Clockwise member-end moments are positive.
+//
+// First span:
+// left end is hinged.
+//
+// Last span:
+// right end is hinged.
+//
+// Interior spans:
+// both ends are initially fixed.
 
-        dfs.push(dfL, 1 - dfL, dfR, 1 - dfR);
-      }
+function calculateFEM(L, w) {
 
-      // FEM calculations
-      for (let i = 0; i < spanCount; i++) {
-        if (i === 0 || i === spanCount - 1) {
-          femRow.push((w[i] * Math.pow(L[i], 2)) / 8);
-        } else {
-          femRow.push((w[i] * Math.pow(L[i], 2)) / 12);
-        }
-      }
+  const spanCount = L.length;
+  const femRow = [];
 
-      // Balancing moments
-      for (let i = 0; i < spanCount - 1; i++) {
-        balanceMoments.push(femRow[i] - femRow[i + 1]);
-      }
+  for (let i = 0; i < spanCount; i++) {
 
-      // Carryover moments & swaps
-      for (let i = 0; i < balanceMoments.length; i++) {
-        const dfi = dfs[i * 2] || 0;
-        const dfi2 = dfs[i * 2 + 1] || 0;
-        const co1 = balanceMoments[i] * dfi;
-        const co2 = balanceMoments[i] * dfi2;
-        swapRows.push([co2 * 0.5, co1 * 0.5]);
-        coResults.push([co1, co2]);
-      }
+    const loadMoment = w[i] * Math.pow(L[i], 2);
 
-      // Final Moments
-      const finalMoments = femRow.map((val, i) => {
-        let sum = val;
-        for (let j = 0; j < swapRows.length; j++) {
-          if (swapRows[j][0] && i === j + 1) sum += swapRows[j][0];
-          if (swapRows[j][1] && i === j) sum += swapRows[j][1];
-        }
-        return sum;
+    if (spanCount === 1) {
+
+      // Both ends hinged.
+      femRow.push([0, 0]);
+
+    } else if (i === 0) {
+
+      // First span: left hinge, right fixed.
+      femRow.push([
+        0,
+        loadMoment / 8
+      ]);
+
+    } else if (i === spanCount - 1) {
+
+      // Last span: left fixed, right hinge.
+      femRow.push([
+        -loadMoment / 8,
+        0
+      ]);
+
+    } else {
+
+      // Interior span: fixed at both ends.
+      femRow.push([
+        -loadMoment / 12,
+        loadMoment / 12
+      ]);
+    }
+  }
+
+  return femRow;
+}
+
+
+// ======================================================
+// PHASE 4: STIFFNESS AND DISTRIBUTION FACTORS
+// ======================================================
+
+// Each internal joint connects two adjacent spans.
+//
+// Normalized stiffness:
+// Far end fixed = 1/L
+// Far end hinged = 3/(4L)
+//
+// Each internal joint has two distribution factors.
+
+function calculateDistributionFactors(L) {
+
+  const spanCount = L.length;
+
+  const stiffness = [];
+  const dfs = [];
+
+  for (let j = 0; j < spanCount - 1; j++) {
+
+    const kLeft =
+      (j === 0 ? 3 / 4 : 1) / L[j];
+
+    const kRight =
+      (j === spanCount - 2 ? 3 / 4 : 1) / L[j + 1];
+
+    const totalK = kLeft + kRight;
+
+    const dfLeft = kLeft / totalK;
+    const dfRight = kRight / totalK;
+
+    stiffness.push([
+      kLeft,
+      kRight
+    ]);
+
+    dfs.push([
+      dfLeft,
+      dfRight
+    ]);
+  }
+
+  return {
+    stiffness,
+    dfs
+  };
+}
+
+
+// ======================================================
+// PHASE 5: INITIALIZE MOMENT MATRIX
+// ======================================================
+
+// Create a separate matrix so the original FEM values
+// remain unchanged.
+
+function copyMomentMatrix(matrix) {
+
+  return matrix.map(row => [...row]);
+
+}
+
+
+// ======================================================
+// PHASE 6: CALCULATE JOINT UNBALANCED MOMENTS
+// ======================================================
+
+// At joint j:
+//
+// Right-end moment of span j
+// +
+// Left-end moment of span j+1
+//
+// The algebraic sum is the joint residual.
+
+function calculateJointResiduals(momentMatrix) {
+
+  const residuals = [];
+
+  for (let j = 0; j < momentMatrix.length - 1; j++) {
+
+    const unbalanced =
+      momentMatrix[j][1] +
+      momentMatrix[j + 1][0];
+
+    residuals.push(unbalanced);
+  }
+
+  return residuals;
+}
+
+
+function calculateMaximumResidual(residuals) {
+
+  if (residuals.length === 0) {
+    return 0;
+  }
+
+  return Math.max(
+    ...residuals.map(value => Math.abs(value))
+  );
+}
+
+
+// ======================================================
+// PHASE 7: DISTRIBUTE AND CARRY OVER MOMENTS
+// ======================================================
+
+// Sequential moment distribution.
+//
+// At every joint:
+// 1. Calculate the unbalanced moment.
+// 2. Distribute its opposite using the DFs.
+// 3. Carry over half of each distributed moment,
+//    but only when the far end is an internal joint.
+//
+// No carry-over is allowed to either exterior hinge.
+
+function distributeMoments(momentMatrix, dfs) {
+
+  const spanCount = momentMatrix.length;
+
+  for (let j = 0; j < spanCount - 1; j++) {
+
+    const unbalanced =
+      momentMatrix[j][1] +
+      momentMatrix[j + 1][0];
+
+    const dfLeft = dfs[j][0];
+    const dfRight = dfs[j][1];
+
+    const distributedLeft =
+      -unbalanced * dfLeft;
+
+    const distributedRight =
+      -unbalanced * dfRight;
+
+    // Add distributed moments at the joint.
+    momentMatrix[j][1] += distributedLeft;
+    momentMatrix[j + 1][0] += distributedRight;
+
+    // Carry over from the left member.
+    // Do not carry over to the first exterior hinge.
+    if (j > 0) {
+
+      momentMatrix[j][0] +=
+        distributedLeft * 0.5;
+
+    }
+
+    // Carry over from the right member.
+    // Do not carry over to the last exterior hinge.
+    if (j + 1 < spanCount - 1) {
+
+      momentMatrix[j + 1][1] +=
+        distributedRight * 0.5;
+
+    }
+  }
+
+  return momentMatrix;
+}
+
+
+// ======================================================
+// PHASE 8: ITERATIVE MOMENT DISTRIBUTION
+// ======================================================
+
+function runMomentDistribution(
+  femRow,
+  dfs,
+  tolerance,
+  maxIterations
+) {
+
+  let finalMoments = copyMomentMatrix(femRow);
+
+  let iterations = 0;
+  let maximumResidual = Infinity;
+
+  while (
+    iterations < maxIterations &&
+    maximumResidual > tolerance
+  ) {
+
+    distributeMoments(finalMoments, dfs);
+
+    iterations++;
+
+    const residuals =
+      calculateJointResiduals(finalMoments);
+
+    maximumResidual =
+      calculateMaximumResidual(residuals);
+  }
+
+  const converged =
+    maximumResidual <= tolerance;
+
+  return {
+    finalMoments,
+    iterations,
+    maximumResidual,
+    converged
+  };
+}
+
+
+// ======================================================
+// PHASE 9: CONVERT MEMBER-END MOMENTS
+// TO SECTION MOMENTS
+// ======================================================
+
+// The reaction and BMD equations use sagging-positive
+// section moments.
+//
+// Under our clockwise-positive member-end convention:
+// Section moment at left = member left-end moment.
+// Section moment at right = negative of member right-end moment.
+
+function getSectionMoments(finalMoments) {
+
+  return finalMoments.map(span => {
+
+    return {
+      MA: span[0],
+      MB: -span[1]
+    };
+
+  });
+}
+
+
+// ======================================================
+// PHASE 10: CALCULATE SPAN REACTIONS
+// ======================================================
+
+// UDL only.
+//
+// MA and MB are sagging-positive section moments.
+//
+// RA = wL/2 + (MB - MA)/L
+// RB = wL - RA
+
+function calculateReactions(L, w, MA, MB) {
+
+  const RA =
+    (w * L / 2) +
+    ((MB - MA) / L);
+
+  const RB =
+    w * L - RA;
+
+  return {
+    RA,
+    RB
+  };
+}
+
+
+// ======================================================
+// PHASE 11: ASSEMBLE SUPPORT REACTIONS
+// ======================================================
+
+// n spans have n+1 supports.
+//
+// Each span contributes its left and right
+// vertical reactions to the corresponding supports.
+
+function calculateSupportReactions(L, w, sectionMoments) {
+
+  const spanCount = L.length;
+
+  const supportReactions =
+    Array(spanCount + 1).fill(0);
+
+  const spanReactions = [];
+
+  for (let i = 0; i < spanCount; i++) {
+
+    const MA = sectionMoments[i].MA;
+    const MB = sectionMoments[i].MB;
+
+    const reactions = calculateReactions(
+      L[i],
+      w[i],
+      MA,
+      MB
+    );
+
+    spanReactions.push(reactions);
+
+    supportReactions[i] += reactions.RA;
+    supportReactions[i + 1] += reactions.RB;
+  }
+
+  return {
+    supportReactions,
+    spanReactions
+  };
+}
+
+
+// ======================================================
+// PHASE 12: EQUILIBRIUM VALIDATION
+// ======================================================
+
+function validateStructure(
+  L,
+  w,
+  finalMoments,
+  sectionMoments,
+  supportReactions
+) {
+
+  const spanCount = L.length;
+
+  // Vertical equilibrium.
+  let totalLoad = 0;
+
+  for (let i = 0; i < spanCount; i++) {
+
+    totalLoad += w[i] * L[i];
+
+  }
+
+  const totalReaction =
+    supportReactions.reduce(
+      (sum, value) => sum + value,
+      0
+    );
+
+  const verticalError =
+    totalReaction - totalLoad;
+
+
+  // Global moment equilibrium about the first support.
+  const supportPositions = [0];
+
+  for (let i = 0; i < spanCount; i++) {
+
+    supportPositions.push(
+      supportPositions[i] + L[i]
+    );
+
+  }
+
+  let reactionMoment = 0;
+
+  for (let i = 0; i < supportReactions.length; i++) {
+
+    reactionMoment +=
+      supportReactions[i] * supportPositions[i];
+
+  }
+
+  let loadMoment = 0;
+
+  for (let i = 0; i < spanCount; i++) {
+
+    const loadResultant = w[i] * L[i];
+
+    const loadPosition =
+      supportPositions[i] + L[i] / 2;
+
+    loadMoment +=
+      loadResultant * loadPosition;
+
+  }
+
+  const globalMomentError =
+    reactionMoment - loadMoment;
+
+
+  // Check that the calculated right section moment
+  // agrees with the left section moment at the
+  // opposite end of each span.
+
+  const endpointErrors = [];
+
+  for (let i = 0; i < spanCount; i++) {
+
+    const RA = calculateReactions(
+      L[i],
+      w[i],
+      sectionMoments[i].MA,
+      sectionMoments[i].MB
+    ).RA;
+
+    const calculatedMB =
+      sectionMoments[i].MA +
+      RA * L[i] -
+      (w[i] * Math.pow(L[i], 2)) / 2;
+
+    endpointErrors.push(
+      calculatedMB - sectionMoments[i].MB
+    );
+  }
+
+
+  // Check moment residuals at internal joints.
+  const jointResiduals =
+    calculateJointResiduals(finalMoments);
+
+  const maximumJointResidual =
+    calculateMaximumResidual(jointResiduals);
+
+
+  // Check zero moments at the exterior hinges.
+  const leftHingeMoment =
+    finalMoments[0][0];
+
+  const rightHingeMoment =
+    finalMoments[spanCount - 1][1];
+
+  return {
+    totalLoad,
+    totalReaction,
+    verticalError,
+    reactionMoment,
+    loadMoment,
+    globalMomentError,
+    endpointErrors,
+    maximumJointResidual,
+    leftHingeMoment,
+    rightHingeMoment
+  };
+}
+
+
+// ======================================================
+// PHASE 13: GENERATE SFD AND BMD DATA
+// ======================================================
+
+// For each span:
+//
+// V(x) = RA - wx
+//
+// M(x) = MA + RA*x - wx^2/2
+//
+// These equations apply to UDL-only spans.
+
+function generateDiagramData(
+  L,
+  w,
+  sectionMoments,
+  spanReactions,
+  divisions = 40
+) {
+
+  const shearSpans = [];
+  const momentSpans = [];
+
+  let globalX = 0;
+
+  for (let i = 0; i < L.length; i++) {
+
+    const length = L[i];
+    const load = w[i];
+
+    const MA = sectionMoments[i].MA;
+    const RA = spanReactions[i].RA;
+
+    const shearPoints = [];
+    const momentPoints = [];
+
+    for (let k = 0; k <= divisions; k++) {
+
+      const localX =
+        (length / divisions) * k;
+
+      const x = globalX + localX;
+
+      const V =
+        RA - load * localX;
+
+      const M =
+        MA +
+        RA * localX -
+        (load * Math.pow(localX, 2)) / 2;
+
+      shearPoints.push({
+        x,
+        y: V
       });
 
-      log("FEM:", femRow.map(v => v.toFixed(2)).join(", "));
-      log("Balance Moments:", balanceMoments.map(v => v.toFixed(2)).join(", "));
-      log("Final Moments:", finalMoments.map(v => v.toFixed(2)).join(", "));
-
-      drawDiagram(finalMoments);
+      momentPoints.push({
+        x,
+        y: M
+      });
     }
 
-    function drawDiagram(moments) {
-      const canvas = document.getElementById("momentCanvas");
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    shearSpans.push(shearPoints);
+    momentSpans.push(momentPoints);
 
-      const padding = 50;
-      const width = canvas.width - 2 * padding;
-      const height = canvas.height - 2 * padding;
-      const dx = width / (moments.length - 1);
-      const maxMoment = Math.max(...moments.map(Math.abs));
+    globalX += length;
+  }
 
-      ctx.beginPath();
-      ctx.moveTo(padding, canvas.height / 2 - (moments[0] / maxMoment) * height / 2);
-      for (let i = 1; i < moments.length; i++) {
-        const x = padding + dx * i;
-        const y = canvas.height / 2 - (moments[i] / maxMoment) * height / 2;
+  return {
+    shearSpans,
+    momentSpans,
+    totalLength: globalX
+  };
+}
+
+
+// ======================================================
+// PHASE 14: DRAW SFD AND BMD
+// ======================================================
+
+function drawDiagram(
+  canvasId,
+  spans,
+  totalLength,
+  diagramTitle,
+  unit,
+  showSupportJumps = false
+) {
+
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext("2d");
+
+  const width = canvas.width;
+  const height = canvas.height;
+
+  ctx.clearRect(0, 0, width, height);
+
+  const padding = 65;
+
+  const plotWidth = width - 2 * padding;
+  const plotHeight = height - 2 * padding;
+
+  const allValues = spans.flatMap(span =>
+    span.map(point => point.y)
+  );
+
+  let minY = Math.min(0, ...allValues);
+  let maxY = Math.max(0, ...allValues);
+
+  if (minY === maxY) {
+    minY = -1;
+    maxY = 1;
+  }
+
+  const yRange = maxY - minY;
+  const extra = yRange * 0.12;
+
+  minY -= extra;
+  maxY += extra;
+
+  function xPosition(x) {
+
+    return padding +
+      (x / totalLength) * plotWidth;
+
+  }
+
+  function yPosition(y) {
+
+    return padding +
+      ((maxY - y) / (maxY - minY)) * plotHeight;
+
+  }
+
+  // Title.
+  ctx.fillStyle = "#17365d";
+  ctx.font = "bold 18px Arial";
+  ctx.fillText(diagramTitle, padding, 25);
+
+  // Zero line.
+  const zeroY = yPosition(0);
+
+  ctx.beginPath();
+  ctx.moveTo(padding, zeroY);
+  ctx.lineTo(width - padding, zeroY);
+  ctx.strokeStyle = "#555";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Vertical axis.
+  ctx.beginPath();
+  ctx.moveTo(padding, padding);
+  ctx.lineTo(padding, height - padding);
+  ctx.stroke();
+
+  // Horizontal axis.
+  ctx.beginPath();
+  ctx.moveTo(padding, height - padding);
+  ctx.lineTo(width - padding, height - padding);
+  ctx.stroke();
+
+  // Plot each span.
+  for (let i = 0; i < spans.length; i++) {
+
+    const points = spans[i];
+
+    ctx.beginPath();
+
+    points.forEach((point, index) => {
+
+      const x = xPosition(point.x);
+      const y = yPosition(point.y);
+
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
         ctx.lineTo(x, y);
       }
-      ctx.strokeStyle = "blue";
+
+    });
+
+    ctx.strokeStyle =
+      showSupportJumps ? "#d35400" : "#1769aa";
+
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Draw vertical shear jumps at internal supports.
+  if (showSupportJumps) {
+
+    for (let i = 1; i < spans.length; i++) {
+
+      const previousSpan = spans[i - 1];
+      const currentSpan = spans[i];
+
+      const previousEnd =
+        previousSpan[previousSpan.length - 1];
+
+      const currentStart =
+        currentSpan[0];
+
+      const x = xPosition(currentStart.x);
+
+      ctx.beginPath();
+      ctx.moveTo(x, yPosition(previousEnd.y));
+      ctx.lineTo(x, yPosition(currentStart.y));
+
+      ctx.strokeStyle = "#222";
       ctx.lineWidth = 2;
       ctx.stroke();
+    }
+  }
 
-      // Axes
-      ctx.beginPath();
-      ctx.moveTo(padding, canvas.height / 2);
-      ctx.lineTo(canvas.width - padding, canvas.height / 2);
-      ctx.strokeStyle = "black";
-      ctx.lineWidth = 1;
-      ctx.stroke();
+  // Axis labels.
+  ctx.fillStyle = "#222";
+  ctx.font = "13px Arial";
+
+  ctx.fillText(
+    `Value (${unit})`,
+    8,
+    padding - 10
+  );
+
+  ctx.fillText(
+    "Beam length (m)",
+    width / 2 - 45,
+    height - 12
+  );
+
+  ctx.fillText(
+    "0",
+    padding - 20,
+    zeroY + 5
+  );
+
+  ctx.fillText(
+    totalLength.toFixed(2),
+    width - padding - 30,
+    height - padding + 20
+  );
+}
+
+
+// ======================================================
+// PHASE 15: OUTPUT FORMATTING
+// ======================================================
+
+function formatMatrix(matrix) {
+
+  return matrix.map((row, index) => {
+
+    return `Span ${index + 1}: [` +
+      `${row[0].toFixed(4)}, ` +
+      `${row[1].toFixed(4)}]`;
+
+  }).join("\n");
+
+}
+
+
+function formatArray(array) {
+
+  return array.map(value =>
+    value.toFixed(4)
+  ).join(", ");
+
+}
+
+
+// ======================================================
+// PHASE 16: MAIN CALCULATION FUNCTION
+// ======================================================
+
+function momentDistribution() {
+
+  const output = document.getElementById("output");
+
+  output.textContent = "";
+
+  const log = (...args) => {
+
+    output.textContent +=
+      args.join(" ") + "\n";
+
+  };
+
+  try {
+
+    // Read input.
+    const {
+      L,
+      w,
+      spanCount
+    } = readInputs();
+
+
+    const tolerance = Number(
+      document.getElementById("tolerance").value
+    );
+
+    const maxIterations = Number(
+      document.getElementById("maxIterations").value
+    );
+
+    if (!Number.isFinite(tolerance) || tolerance <= 0) {
+      throw new Error("Tolerance must be greater than zero.");
     }
 
-    // Initialize default inputs
-    generateInputs();
-  </script></body>
+    if (
+      !Number.isInteger(maxIterations) ||
+      maxIterations < 1
+    ) {
+      throw new Error("Maximum iterations must be a positive integer.");
+    }
+
+
+    // Calculate FEM.
+    const femRow = calculateFEM(L, w);
+
+
+    // Calculate stiffness and DFs.
+    const {
+      stiffness,
+      dfs
+    } = calculateDistributionFactors(L);
+
+
+    // Run moment distribution.
+    const {
+      finalMoments,
+      iterations,
+      maximumResidual,
+      converged
+    } = runMomentDistribution(
+      femRow,
+      dfs,
+      tolerance,
+      maxIterations
+    );
+
+
+    // Convert member-end moments to section moments.
+    const sectionMoments =
+      getSectionMoments(finalMoments);
+
+
+    // Calculate reactions.
+    const {
+      supportReactions,
+      spanReactions
+    } = calculateSupportReactions(
+      L,
+      w,
+      sectionMoments
+    );
+
+
+    // Validate the structure.
+    const validation = validateStructure(
+      L,
+      w,
+      finalMoments,
+      sectionMoments,
+      supportReactions
+    );
+
+
+    // Generate diagram data.
+    const diagramData = generateDiagramData(
+      L,
+      w,
+      sectionMoments,
+      spanReactions
+    );
+
+
+    // ----------------------------------------------
+    // DISPLAY RESULTS
+    // ----------------------------------------------
+
+    log("======================================");
+    log("CONTINUOUS BEAM ANALYSIS");
+    log("HARDY CROSS MOMENT DISTRIBUTION");
+    log("======================================");
+
+    log("");
+    log("NUMBER OF SPANS:", spanCount);
+
+    log("SPAN LENGTHS (m):", formatArray(L));
+
+    log("UDL LOADS (kN/m):", formatArray(w));
+
+
+    log("");
+    log("--------------------------------------");
+    log("1. FIXED-END MOMENTS");
+    log("--------------------------------------");
+
+    log(formatMatrix(femRow));
+
+
+    log("");
+    log("--------------------------------------");
+    log("2. MEMBER STIFFNESS");
+    log("--------------------------------------");
+
+    stiffness.forEach((row, index) => {
+
+      log(
+        `Joint ${index + 1}:`,
+        `Left K = ${row[0].toFixed(6)},`,
+        `Right K = ${row[1].toFixed(6)}`
+      );
+
+    });
+
+
+    log("");
+    log("--------------------------------------");
+    log("3. DISTRIBUTION FACTORS");
+    log("--------------------------------------");
+
+    dfs.forEach((row, index) => {
+
+      log(
+        `Joint ${index + 1}:`,
+        `Left DF = ${row[0].toFixed(6)},`,
+        `Right DF = ${row[1].toFixed(6)}`
+      );
+
+    });
+
+
+    log("");
+    log("--------------------------------------");
+    log("4. FINAL MEMBER-END MOMENTS");
+    log("--------------------------------------");
+
+    log(formatMatrix(finalMoments));
+
+
+    log("");
+    log("--------------------------------------");
+    log("5. SECTION MOMENTS FOR BMD");
+    log("--------------------------------------");
+
+    sectionMoments.forEach((span, index) => {
+
+      log(
+        `Span ${index + 1}:`,
+        `MA = ${span.MA.toFixed(4)},`,
+        `MB = ${span.MB.toFixed(4)}`
+      );
+
+    });
+
+
+    log("");
+    log("--------------------------------------");
+    log("6. ITERATION DETAILS");
+    log("--------------------------------------");
+
+    log("Iterations:", iterations);
+
+    log("Maximum joint residual:",
+      maximumResidual.toExponential(6)
+    );
+
+    log("Converged:", converged ? "YES" : "NO");
+
+
+    log("");
+    log("--------------------------------------");
+    log("7. SPAN REACTIONS");
+    log("--------------------------------------");
+
+    spanReactions.forEach((reaction, index) => {
+
+      log(
+        `Span ${index + 1}:`,
+        `RA = ${reaction.RA.toFixed(4)} kN,`,
+        `RB = ${reaction.RB.toFixed(4)} kN`
+      );
+
+    });
+
+
+    log("");
+    log("--------------------------------------");
+    log("8. SUPPORT REACTIONS");
+    log("--------------------------------------");
+
+    supportReactions.forEach((reaction, index) => {
+
+      log(
+        `Support ${index + 1}:`,
+        `${reaction.toFixed(4)} kN`
+      );
+
+    });
+
+
+    log("");
+    log("--------------------------------------");
+    log("9. EQUILIBRIUM VALIDATION");
+    log("--------------------------------------");
+
+    log(
+      "Total applied load:",
+      validation.totalLoad.toFixed(6),
+      "kN"
+    );
+
+    log(
+      "Total vertical reactions:",
+      validation.totalReaction.toFixed(6),
+      "kN"
+    );
+
+    log(
+      "Vertical equilibrium error:",
+      validation.verticalError.toExponential(6),
+      "kN"
+    );
+
+    log(
+      "Global moment equilibrium error:",
+      validation.globalMomentError.toExponential(6),
+      "kNm"
+    );
+
+    log(
+      "Maximum joint residual:",
+      validation.maximumJointResidual.toExponential(6),
+      "kNm"
+    );
+
+    log(
+      "Left hinge moment:",
+      validation.leftHingeMoment.toExponential(6),
+      "kNm"
+    );
+
+    log(
+      "Right hinge moment:",
+      validation.rightHingeMoment.toExponential(6),
+      "kNm"
+    );
+
+
+    log("");
+    log("--------------------------------------");
+    log("10. ANALYSIS STATUS");
+    log("--------------------------------------");
+
+    if (converged) {
+
+      log("Moment distribution converged.");
+
+    } else {
+
+      log("WARNING: Maximum iterations reached.");
+      log("The result has not met the specified tolerance.");
+
+    }
+
+    log("");
+    log("All moments are in kNm.");
+    log("All reactions are in kN.");
+
+
+    // ----------------------------------------------
+    // DRAW DIAGRAMS
+    // ----------------------------------------------
+
+    drawDiagram(
+      "shearCanvas",
+      diagramData.shearSpans,
+      diagramData.totalLength,
+      "Shear Force Diagram",
+      "kN",
+      true
+    );
+
+    drawDiagram(
+      "momentCanvas",
+      diagramData.momentSpans,
+      diagramData.totalLength,
+      "Bending Moment Diagram",
+      "kNm",
+      false
+    );
+
+  } catch (error) {
+
+    output.textContent =
+      "ERROR: " + error.message;
+
+  }
+}
+
+
+// ======================================================
+// INITIALIZE
+// ======================================================
+
+generateInputs();
+
+</script>
+
+</body>
 </html>
